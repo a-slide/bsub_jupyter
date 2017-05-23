@@ -1,19 +1,32 @@
-bsub_jupyter
+# bsub_jupyter
 ------------
 
-Connect to a LSF main node directly or trough a ssh jump node, launch a jupyter notebook via bsub and open automatically a tunnel. The name of the connection can be used to reestablish the connection later or to terminate it.
+Connect to a LSF head node run a jupyter notebook via bsub and automatically open a double ssh tunnel to forward the interface on localhost.
 
+##Dependencies
 
+The program was tested under Linux Ubuntu 16.04 LTS and requires the following dependencies on your local machine:
 
-Installation
-------------
+* Python 2.7
+* OpenSSH 5.4+
+
+in addition, the head node of your LSF file system requires the following dependencies as well :
+* Python 2.7
+* OpenSSH 5.4+
+* Jupyter 4.0.0+
+
+## Installation
+
 ```
-git clone https://github.com/lucapinello/bsub_jupyter
+git clone https://github.com/a-slide/bsub_jupyter.git
 cd bsub_jupyter
+chmod u+x bsub_jupyter.py
 ```
 
-Add public key to the machine
------------------------------
+Then add bsub_jupyter.py to your PATH
+
+## Add public key to the machine
+
 To avoid entering the password many many times to establish the connection those steps are necessary, BEFORE running the script.
 
 Create a new ssh key if you don’t have one with the command
@@ -25,120 +38,107 @@ The key will be stored by default in: ~/.ssh/id_rsa.pub
 
 Install the utility ssh-copy-id if not available. 
 
-On OSX this can be accomplished easily with the Homebrew packaging manager (https://brew.sh/). After installing homebrew type the command
-
-```
-brew install ssh-copy-id
-```
-
 While inside your network (or connected through the VPN) copy your public key to the main node machine with the command:
 
 ```
 ssh-copy-id -i ~/.ssh/id_rsa.pub lp698@ssh.research.partners.org
 ```
 
-If you are planning to use bsub_jupyter outside your VPN network copy also the public key to the bastion server:
-
+## Usage
 ```
-ssh-copy-id -i ~/.ssh/id_rsa.pub lp698@eris1n2.research.partners.org
+bsub_jupyter.py [-h] -U SSH_USERNAME -H SSH_HOSTNAME [-p REMOTE_PATH]   [-m MEMORY] [-t THREADS] [-q QUEUE] [-l LOCAL_PORT]  [-r REMOTE_PORT] [-v]
 ```
-
-Usage
------
-python bsub_jupyter username@server connection_name
 
 For example:
+```
+bsub_jupyter.py -U luke -H hh-yoda-04-01.ebi.ac.uk -p /nfs/leia/data/ -m 10000 -t 5 -q darkside -l 9999 -r 9998 --verbose
+```
+
+In verbose mode you will see:
 
 ```
-python bsub_jupyter.py  lp698@eris1n2.research.partners.org my_connection2 --remote_path /data/pinello
-```
+    | |__  ___ _   _| |__       (_)_   _ _ __  _   _| |_ ___ _ __ 
+    | '_ \/ __| | | | '_ \      | | | | | '_ \| | | | __/ _ \ '__|
+    | |_) \__ \ |_| | |_) |     | | |_| | |_) | |_| | ||  __/ |   
+    |_.__/|___/\__,_|_.__/____ _/ |\__,_| .__/ \__, |\__\___|_|   
+                        |_____|__/      |_|    |___/             
+    
+    
+	 username: luke
+	 hostname: hh-yoda-04-01.ebi.ac.uk
+	 ssh_server: luke@hh-yoda-04-01.ebi.ac.uk
+	 remote_path: /nfs/leia/data/
+	 memory: 10000
+	 threads: 5
+	 queue: darkside
+	 local_port: 9999
+	 remote_port: 9998
+	 connection_filename: ~/jupyter_connection.txt
+Host hh-yoda-04-01.ebi.ac.uk is reacheable
+No running jobs were found
+ssh -t luke@hh-yoda-04-01.ebi.ac.uk "bsub -e /dev/null -o /dev/null -n 5 -M 5000 -cwd /nfs/leia/data/ -q darkside jupyter notebook --port=9998 --no-browser 2>&1 >~/jupyter_connection.txt" 2> /dev/null
+job running with job_id 4849293
+Waiting for the job to be dispatched
+. . . .
 
-You will see:
+Job running on compute node: hh-yoda-02-34.ebi.ac.uk
+ssh -N -L localhost:9998:localhost:9998 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o "ProxyCommand ssh luke@hh-yoda-04-01.ebi.ac.uk -W %h:%p" luke@hh-yoda-11-13.ebi.ac.uk
+Tunnel created! You can see your jupyter notebook server at:
 
-```
-Checking if a connection alrady exists...
-No running jobs were found, launching a new one!
-JOB ID: 597500
-Querying queue for job info.. . . .
-Server launched on node: cn031
-Local port: 9439  remote port: 9147
-Should I open an ssh tunnel for you? [Y/n] y
-Tunnel created! You can see your jupyter notebook server at: http://localhost:9439
+	--> http://localhost:9999 <--
+
 Press Ctrl-c to interrupt the connection
-```
-
-Now you can open a browser and connect to the url provided, in this case http://localhost:9439 (the local and remote ports are generated at random between 9000 and 10000 to minimize conflicts with other users)
-
-Once finished you can press Ctrl+c
-```
-Tunnel closed!
-Should I kill also the job? [Y/n] n
-```
-
-If you didn't kill the job, you can reattach to it with the same command (since the connection name is the same!):
+Warning: Permanently added 'hh-yoda-11-13.ebi.ac.uk' (ECDSA) to the list of known hosts.
 
 ```
-python bsub_jupyter.py  lp698@eris1n2.research.partners.org my_connection
-```
+
+Now you can open a browser and connect to the url provided, in this case http://localhost:9999 (if not given the local and remote ports are generated at random between 9000 and 10000 to minimize conflicts with other users)
+
+Once finished you can press Ctrl+c. The ssh tunnel and the job will be automatically killed
 
 ```
-A running job already exists!
-JOB ID: 597500
-Should I kill it? [Y/n] n
-Querying queue for job info.. .
-Server launched on node: cn031
-Local port: 9439  remote port: 9147
-Should I open an ssh tunnel for you? [Y/n] y
-Tunnel created! You can see your jupyter notebook server at: http://localhost:9439
-Press Ctrl-c to interrupt the connection
+Connection interupted by user
+Try to remove the connection file and kill the existing jupyter job...
+Job <4849305> is being terminated
 ```
 
-This time you see the option to also kill the job: Should I kill it? [Y/n] n
-
-Or you can kill after you press Ctrl+c:
-```
-Tunnel closed!
-Should I kill also the job? [Y/n] y
-Job <597500> is being terminated
-```
-
-If you are in a network where the main node is behind a firewall and you can use an intermediate node you can use the option --bastion_server, for example:
+Options are described in the command line help:
 
 ```
-python bsub_jupyter.py  lp698@eris1n2.research.partners.org my_connection --bastion_server lp698@ssh.research.partners.org
-```
-
-Other useful options are described in the command line help:
-
-```
-python bsub_jupyter.py --help
+bsub_jupyter.py --help
 ```
 
 ```
-usage: bsub_jupyter.py [-h] [--bastion_server BASTION_SERVER]
-                       [--memory MEMORY] [--n_cores N_CORES] [--queue QUEUE]
-                       [--force_new_connection]
-                       lsf_server connection_name
+usage: bsub_jupyter.py [-h] -U SSH_USERNAME -H SSH_HOSTNAME [-p REMOTE_PATH]
+                       [-m MEMORY] [-t THREADS] [-q QUEUE] [-l LOCAL_PORT]
+                       [-r REMOTE_PORT] [-v]
 
-bsub_jupyter - Connect to a LSF main node directly or trough a ssh jump node,
-launch a jupyter notebook via bsub and open automatically a tunnel.
-
-positional arguments:
-  lsf_server            username@server, the server is the main LSF node used
-                        to submit jobs with bsub
-  connection_name       Name of the connection
+Connect to a LSF main node directly or trough a ssh jump node launch a jupyter
+notebook via bsub and open automatically a tunnel.
 
 optional arguments:
   -h, --help            show this help message and exit
-  --bastion_server BASTION_SERVER
-                        SSH jump server, format username@server (default:
-                        None)
-  --memory MEMORY       Memory to request (default: 64000)
-  --n_cores N_CORES     # of cores to request (default: 8)
-  --queue QUEUE         Queue to submit job (default: big-multi)
-  --force_new_connection
-                        Ignore any existing connection file and start a new
-                        connection (default: False)
+  -U SSH_USERNAME, --ssh_username SSH_USERNAME
+                        Username to connect to the lsf head node [MANDATORY]
+                        (default: None)
+  -H SSH_HOSTNAME, --ssh_hostname SSH_HOSTNAME
+                        Hostname to connect to the lsf head node [MANDATORY]
+                        (default: None)
+  -p REMOTE_PATH, --remote_path REMOTE_PATH
+                        remote path to use (default: ~)
+  -m MEMORY, --memory MEMORY
+                        Memory to request (default: 5000)
+  -t THREADS, --threads THREADS
+                        # of threads to request (default: 1)
+  -q QUEUE, --queue QUEUE
+                        Queue to submit job (default: None)
+  -l LOCAL_PORT, --local_port LOCAL_PORT
+                        Local port for ssh forwarding (randomly generated)
+                        (default: None)
+  -r REMOTE_PORT, --remote_port REMOTE_PORT
+                        Local port for ssh forwarding (randomly generated)
+                        (default: None)
+  -v, --verbose         Print debuging information (default: False)
 ```
 
 
