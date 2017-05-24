@@ -3,7 +3,7 @@
 
 Connect to a LSF head node run a jupyter notebook via bsub and automatically open a double ssh tunnel to forward the interface on localhost.
 
-##Dependencies
+## Dependencies
 
 The program was tested under Linux Ubuntu 16.04 LTS and requires the following dependencies on your local machine:
 
@@ -27,9 +27,7 @@ Then add bsub_jupyter.py to your PATH
 
 ## Add public key to the machine
 
-To avoid entering the password many many times to establish the connection those steps are necessary, BEFORE running the script.
-
-Create a new ssh key if you don’t have one with the command
+To avoid interactive password prompt  to establish the connection those steps are necessary, BEFORE running the script. Create a new ssh key if you don’t have one with the command
 
 ```
 ssh-keygen
@@ -63,41 +61,54 @@ In verbose mode you will see:
     |_.__/|___/\__,_|_.__/____ _/ |\__,_| .__/ \__, |\__\___|_|   
                         |_____|__/      |_|    |___/             
     
-    
+List of parameters:
 	 username: luke
 	 hostname: hh-yoda-04-01.ebi.ac.uk
-	 ssh_server: luke@hh-yoda-04-01.ebi.ac.uk
+	 ssh_server: aleg@hh-yoda-04-01.ebi.ac.uk
 	 remote_path: /nfs/leia/data/
 	 memory: 10000
 	 threads: 5
 	 queue: darkside
 	 local_port: 9999
 	 remote_port: 9998
-	 connection_filename: ~/jupyter_connection.txt
-Host hh-yoda-04-01.ebi.ac.uk is reacheable
-No running jobs were found
-ssh -t luke@hh-yoda-04-01.ebi.ac.uk "bsub -e /dev/null -o /dev/null -n 5 -M 5000 -cwd /nfs/leia/data/ -q darkside jupyter notebook --port=9998 --no-browser 2>&1 >~/jupyter_connection.txt" 2> /dev/null
-job running with job_id 4849293
-Waiting for the job to be dispatched
-. . . .
+	 auto_add_bsub_host: False
+	 connection_filename: ~/jupyter_connection.txt 
 
+Checking connection status ...
+	Host hh-yoda-04-01.ebi.ac.uk is reachable
+	No running jobs were found
+
+Launching Jupyter job ...
+    Host hh-yoda-04-01.ebi.ac.uk is reachable
+    No running jobs were found
+    Command line : ssh -t luke@hh-yoda-04-01.ebi.ac.uk "bsub -e /dev/null -o /dev/null -n 5 -M 5000 -cwd /nfs/leia/data/ -q darkside jupyter notebook --port=9998 --no-browser 2>&1 >~/jupyter_connection.txt" 2> /dev/null
+    job running with job_id 4849293
+    Waiting for the job to be dispatched
+
+Waiting for the job to be dispatched  . . . . . 
 Job running on compute node: hh-yoda-02-34.ebi.ac.uk
-ssh -N -L localhost:9998:localhost:9998 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o "ProxyCommand ssh luke@hh-yoda-04-01.ebi.ac.uk -W %h:%p" luke@hh-yoda-11-13.ebi.ac.uk
+
+Opening a double ssh tunnel ...
+    Command line : ssh -N -L localhost:9998:localhost:9998 -o "ProxyCommand ssh luke@hh-yoda-04-01.ebi.ac.uk -W %h:%p" luke@hh-yoda-11-13.ebi.ac.uk
+
 Tunnel created! You can see your jupyter notebook server at:
 
 	--> http://localhost:9999 <--
 
 Press Ctrl-c to interrupt the connection
-Warning: Permanently added 'hh-yoda-11-13.ebi.ac.uk' (ECDSA) to the list of known hosts.
-
+The authenticity of host 'hh-yoda-07-12.ebi.ac.uk (<no hostip for proxy command>)' can't be established.
+ECDSA key fingerprint is SHA256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added 'hh-yoda-07-12.ebi.ac.uk' (ECDSA) to the list of known hosts.
 ```
+If the compute node is not in list of known host (in $HOME/ssh/known_hosts), the user will be prompted to permanently add it (yes/no). To bypass this verification step it is possible to use the --auto_add_bsub_host (-a) option. As it potentially open to "man in the middle" attacks, it should be used only in a safe computing environment. 
 
 Now you can open a browser and connect to the url provided, in this case http://localhost:9999 (if not given the local and remote ports are generated at random between 9000 and 10000 to minimize conflicts with other users)
 
-Once finished you can press Ctrl+c. The ssh tunnel and the job will be automatically killed
+Once finished you can press Ctrl+c. The ssh tunnel will be closed and the job will be automatically killed
 
 ```
-Connection interupted by user
+Connection interrupted by the user
 Try to remove the connection file and kill the existing jupyter job...
 Job <4849305> is being terminated
 ```
@@ -109,23 +120,16 @@ bsub_jupyter.py --help
 ```
 
 ```
-usage: bsub_jupyter.py [-h] -U SSH_USERNAME -H SSH_HOSTNAME [-p REMOTE_PATH]
-                       [-m MEMORY] [-t THREADS] [-q QUEUE] [-l LOCAL_PORT]
-                       [-r REMOTE_PORT] [-v]
-
-Connect to a LSF main node directly or trough a ssh jump node launch a jupyter
-notebook via bsub and open automatically a tunnel.
+Connect to a LSF head node, launch a jupyter notebook via bsub and open automatically a double ssh tunnel to forward the interface locally.
 
 optional arguments:
   -h, --help            show this help message and exit
   -U SSH_USERNAME, --ssh_username SSH_USERNAME
-                        Username to connect to the lsf head node [MANDATORY]
-                        (default: None)
+                        Username to connect to the lsf head node [MANDATORY] (default: None)
   -H SSH_HOSTNAME, --ssh_hostname SSH_HOSTNAME
-                        Hostname to connect to the lsf head node [MANDATORY]
-                        (default: None)
+                        Hostname to connect to the lsf head node [MANDATORY] (default: None)
   -p REMOTE_PATH, --remote_path REMOTE_PATH
-                        remote path to use (default: ~)
+                        Remote path to use (default: ~)
   -m MEMORY, --memory MEMORY
                         Memory to request (default: 5000)
   -t THREADS, --threads THREADS
@@ -133,12 +137,12 @@ optional arguments:
   -q QUEUE, --queue QUEUE
                         Queue to submit job (default: None)
   -l LOCAL_PORT, --local_port LOCAL_PORT
-                        Local port for ssh forwarding (randomly generated)
-                        (default: None)
+                        Local port for ssh forwarding (if not given will be randomly generated between 9000 and 10000) (default: None)
   -r REMOTE_PORT, --remote_port REMOTE_PORT
-                        Local port for ssh forwarding (randomly generated)
-                        (default: None)
-  -v, --verbose         Print debuging information (default: False)
+                        Remote port for ssh forwarding (if not given will be randomly generated between 9000 and 10000) (default: None)
+  -v, --verbose         Print debugging information (default: False)
+  -a, --auto_add_bsub_host
+                        Automatically add the compute node running the bsub jupyter job to the list of known hosts. Only use this option if you are in a safe computing environment with trustworthy machines, as it will also skip the host key checking (default: False)
 ```
 
 

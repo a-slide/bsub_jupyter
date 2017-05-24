@@ -23,27 +23,37 @@ __version__ = "0.3.0"
 
 def bsub_jupyter():
     
-    # Parse aguments 
+    # Parse arguments 
     try:
         parser = argparse.ArgumentParser(
             description = 'Connect to a LSF head node, launch a jupyter notebook via bsub and open automatically a double ssh tunnel to \
             forward the interface locally.',
             formatter_class = argparse.ArgumentDefaultsHelpFormatter)
+            
         # Mandatory args
         parser.add_argument('-U', '--ssh_username', type=str, required=True, default=None,
             help='Username to connect to the lsf head node [MANDATORY]')
         parser.add_argument('-H', '--ssh_hostname', type=str, required=True, default=None,
             help='Hostname to connect to the lsf head node [MANDATORY]')
+            
         # Optional args
-        parser.add_argument('-p', '--remote_path', type=str,help='remote path to use', default='~')
+        parser.add_argument('-p', '--remote_path', type=str,help='Remote path to use', default='~')
         parser.add_argument('-m', '--memory', type=int, help='Memory to request', default=5000)
         parser.add_argument('-t', '--threads', type=int, help='# of threads to request', default=1)
         parser.add_argument('-q', '--queue', type=str, help='Queue to submit job', default=None)
-        parser.add_argument('-l', '--local_port', type=int, help='Local port for ssh forwarding (randomly generated)', default=None)
-        parser.add_argument('-r', '--remote_port', type=int, help='Local port for ssh forwarding (randomly generated)', default=None)
-        parser.add_argument('-v', '--verbose', help='Print debuging information', default=False, action='store_true')
-        # Parse the args obj
-        args = parser.parse_args()        
+        parser.add_argument('-l', '--local_port', type=int, default=None,
+            help='Local port for ssh forwarding (if not given will be randomly generated between 9000 and 10000)')
+        parser.add_argument('-r', '--remote_port', type=int, default=None,
+            help='Remote port for ssh forwarding (if not given will be randomly generated between 9000 and 10000)')
+        parser.add_argument('-v', '--verbose', help='Print debugging information', default=False, action='store_true')
+        parser.add_argument('-a', '--auto_add_bsub_host', default=False, action='store_true',
+            help='Automatically add the compute node running the bsub jupyter job to the list of known hosts.\
+            Only use this option if you are in a safe computing environment with trustworthy machines,\
+            as it will also skip the host key checking')
+            
+        # Parse the args object
+        args = parser.parse_args()
+                
     except Exception:
         parser.print_help()
         sys.exit(1)
@@ -59,9 +69,11 @@ def bsub_jupyter():
     local_port = args.local_port if args.local_port else randint(9000,10000)
     remote_port = args.remote_port if args.remote_port else randint(9000,10000)
     verbose = args.verbose
+    auto_add_bsub_host = args.auto_add_bsub_host
     connection_filename= '~/jupyter_connection.txt'
 
     if verbose:
+        print ("List of parameters:")
         print ("\t username: {}".format(ssh_username))
         print ("\t hostname: {}".format(ssh_hostname))
         print ("\t ssh_server: {}".format(ssh_server))
@@ -71,21 +83,30 @@ def bsub_jupyter():
         print ("\t queue: {}".format(queue))
         print ("\t local_port: {}".format(local_port))
         print ("\t remote_port: {}".format(remote_port))
+        print ("\t auto_add_bsub_host: {}".format(auto_add_bsub_host))
         print ("\t connection_filename: {}".format(connection_filename))
     
     # Check the host connectivity
+    if verbose:
+        print ('\nChecking connection status ...')
+        
     if not hostname_resolves(ssh_hostname):
-        print ('Cannot resolve {}. Check server name and try again.'.format(ssh_hostname))
+        print ('\tCannot resolve {}. Check server name and try again.'.format(ssh_hostname))
         sys.exit(1)
     if verbose:
-        print ('Host {} is reacheable'.format(ssh_hostname))
+        print ('\tHost {} is reachable'.format(ssh_hostname))
 
     # Check is a jupyter job is already active
+    
+    ########################################################################################################################################
+    # To be removed at some point and to be replaced by a bjobs check = If jupyter found => kill it                                         #
+    ########################################################################################################################################
+    
     if ssh_file_exist (ssh_server, connection_filename):
         job_id = ssh_get_job_id (ssh_server, connection_filename)
         if verbose:
-            print ('A connection_filename already exists with job_id {}'.format(job_id))
-            print ('Try to remove the connection file and kill the existing jupyter job...')
+            print ('\tA connection_filename already exists with job_id {}'.format(job_id))
+            print ('\tTry to remove the connection file and kill the existing jupyter job...')
         try:
             ssh_bkill_job_id (ssh_server, job_id)
             ssh_rm_file (ssh_server, connection_filename)
@@ -93,27 +114,29 @@ def bsub_jupyter():
             pass
     else:
         if verbose:
-            print ('No running jobs were found')
+            print ('\tNo running jobs were found')
     
     try:
         # Run a job jupyter notebook job
-        jupyter_cmd = 'jupyter notebook --port={} --no-browser 2>&1 >{}'.format(remote_port, connection_filename)
-        bsub_cmd = 'bsub -e /dev/null -o /dev/null -n {} -M {} -cwd {}'.format(threads, memory, remote_path)
-        if queue:
-            bsub_cmd += " -q {}".format(queue)
-        ssh_bsub_jupyter_cmd =  'ssh -t {} "{} {}" 2> /dev/null'.format(ssh_server, bsub_cmd, jupyter_cmd)
         if verbose:
-            print (ssh_bsub_jupyter_cmd)
-        
-        call(ssh_bsub_jupyter_cmd, shell=True)
+            print ('\nLaunching Jupyter job ...')
+        if queue:
+            cmd =  'ssh -t {} "bsub -e /dev/null -o /dev/null -n {} -M {} -cwd {} -q {} jupyter notebook --port={} --no-browser 2>&1 >{}" 2> /dev/null'.format(
+                ssh_server, threads, memory, remote_path, queue, remote_port, connection_filename)
+        else:
+            cmd =  'ssh -t {} "bsub -e /dev/null -o /dev/null -n {} -M {} -cwd {} jupyter notebook --port={} --no-browser 2>&1 >{}" 2> /dev/null'.format(
+                ssh_server, threads, memory, remote_path, remote_port, connection_filename)
+        if verbose:
+            print ("\tCommand line : {}".format(cmd))
+        call(cmd, shell=True)
                 
         # Fetch the job_id
         job_id = ssh_get_job_id (ssh_server, connection_filename)
         if verbose:
-            print ('job running with job_id {}'.format(job_id))
+            print ('\tjob running with job_id {}'.format(job_id))
         
         # Query bjobs to get the name of the server on which jupyter is running
-        print ('Waiting for the job to be dispatched')
+        print '\nWaiting for the job to be dispatched ' ,
         exec_server = None
         while exec_server is None:
             print '.',
@@ -125,16 +148,24 @@ def bsub_jupyter():
             print ('Job running on compute node: {}'.format(exec_server))
         
         # Open an ssh tunnel
-        cmd = 'ssh -N -L localhost:{}:localhost:{} -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o "ProxyCommand ssh {} -W %h:%p" {}@{}'.format(
-            local_port, remote_port, ssh_server, ssh_username, exec_server)
         if verbose:
-            print (cmd)
-        print ('Tunnel created! You can see your jupyter notebook server at:\n\n\t--> http://localhost:{} <--\n'.format(local_port))
+            print ('\nOpening a double ssh tunnel ...')
+        if auto_add_bsub_host:
+            cmd = 'ssh -N -L localhost:{}:localhost:{} -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o "ProxyCommand ssh {} -W %h:%p" {}@{}'.format(
+                local_port, remote_port, ssh_server, ssh_username, exec_server)
+        else:
+            cmd = 'ssh -N -L localhost:{}:localhost:{} -o "ProxyCommand ssh {} -W %h:%p" {}@{}'.format(
+                local_port, remote_port, ssh_server, ssh_username, exec_server)
+                
+        if verbose:
+            print ("\tCommand line : {}".format(cmd))
+            
+        print ('\nTunnel created! You can see your jupyter notebook server at:\n\n\t--> http://localhost:{} <--\n'.format(local_port))
         print ('Press Ctrl-c to interrupt the connection')        
         call(cmd, shell=True)
     
     except KeyboardInterrupt:
-        print("\nConnection interupted by user")
+        print("\nConnection interrupted by the user")
     
     finally:
         if verbose:
@@ -142,7 +173,7 @@ def bsub_jupyter():
         try:
             ssh_bkill_job_id (ssh_server, job_id)
             ssh_rm_file (ssh_server, connection_filename)
-        except:
+        except Exception:
             pass
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
